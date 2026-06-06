@@ -1,0 +1,54 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Контейнерная диаграмма (C2) — Финальный SaaS To-Be вариант
+
+Person(client_admin, "Администратор Клиента", "Панель самообслуживания")
+Person(operator, "Оператор фермы", "Мониторинг инцидентов")
+
+System_Boundary(saas_cloud, "Центральный ЦОД Платформы (SaaS Cloud)") {
+    Container(api_gateway, "Центральный API Gateway", "Go / Ocelot", "Аутентификация (Keycloak JWT), Rate Limiting, Tenant Resolution, маршрутизация")
+    Container(auth_service, "Сервис аутентификации (SSO)", "Keycloak", "Управление учетными записями, разделение ролей и tenant_id")
+    
+    ' Новые SaaS-сервисы
+    Container(billing_service, "Сервис биллинга и подписок", "Go", "Учет тарифных планов, биллинг использования (Pay-as-you-go), выставление счетов")
+    Container(metering_service, "Сервис сбора метрик (Usage)", "Python / FastStream", "Сбор статистики использования API и количества активных камер для биллинга")
+    Container(dev_portal, "Портал для разработчиков (Dev-портал)", "Backstage / OpenAPI", "Документация, Swagger, управление API-ключами клиентов для онбординга")
+    
+    ' Переиспользуемые общие хранилища
+    Container(central_kafka, "Центральный Брокер", "Apache Kafka", "Общая мультитенантная шина данных с разделением по темам (Tenant Topics)")
+    ContainerDb(shared_dwh, "Data Warehouse (ClickHouse)", "Shared DB / RLS", "Общая база с фильтрацией данных по tenant_id на уровне строк (Row-Level Security)")
+    Container(ml_train_module, "ML Training Module", "Python / Spark", "Агрегация обезличенных данных для обучения собственных ML-моделей")
+}
+
+System_Boundary(client_farm, "Периметр фермы Клиента (Локальный контур)") {
+    Container(local_agent, "Умный Агент (Heavy Edge)", "Docker / K3s", "Локальный ИИ-инференс, RabbitMQ, PostgreSQL. Автономен при офлайне.")
+    Container(cameras, "Камеры и IoT-датчики", "Hardware", "Сбор физических метрик")
+}
+
+System_Ext(payment_gw, "Платежный шлюз (ЮKassa)", "REST API", "Российский эквайринг, рекуррентные платежи")
+System_Ext(client_erp, "ERP Клиента (1С)", "REST API", "Система учета на стороне клиента")
+
+' Связи онбординга и биллинга
+Rel(client_admin, dev_portal, "Просмотр API-документации, генерация токенов", "HTTPS")
+Rel(client_admin, api_gateway, "Управление подпиской в ЛК", "HTTPS")
+Rel(api_gateway, auth_service, "Проверка токенов", "gRPC")
+Rel(api_gateway, billing_service, "Запросы тарификации", "gRPC")
+Rel(billing_service, payment_gw, "Рекуррентные списания, холдирование", "HTTPS")
+
+' Связи потоков данных и метрик
+Rel(cameras, local_agent, "Сбор видео и IoT", "RTSP/MQTT")
+Rel(local_agent, api_gateway, "Асинхронная отправка метрик (раз в 10 мин) + tenant_id", "HTTPS / Kafka Протокол")
+Rel(api_gateway, central_kafka, "Публикация телеметрии в топики арендаторов", "Kafka Protocol")
+Rel(central_kafka, metering_service, "Передача логов использования", "Kafka Protocol")
+Rel(metering_service, billing_service, "Обновление баланса использования", "Internal API")
+Rel(central_kafka, shared_dwh, "Запись данных", "ETL")
+Rel(shared_dwh, ml_train_module, "Анализ обезличенных датасетов", "SQL")
+
+' Внешняя интеграция клиента
+Rel(client_erp, api_gateway, "Запрос метрик эффективности в свою ИС", "REST API + Token")
+Rel(api_gateway, shared_dwh, "Запрос данных с фильтрацией Row-Level Security", "SQL")
+Rel(operator, local_agent, "Локальный мониторинг и SMS-алерты", "Локальный UI")
+
+@endum

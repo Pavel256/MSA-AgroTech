@@ -1,0 +1,22 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Контекстная диаграмма (C1) — Финальный SaaS To-Be вариант
+
+Person(saas_client_admin, "Администратор Клиента", "Управляет подпиской в панели самообслуживания")
+Person(saas_operator, "Оператор Клиента", "Мониторит свинокомплексы на местах")
+
+System(saas_platform, "SaaS-Платформа Животноводство X", "Центральное SaaS-облако тарификации, биллинга, агрегации ML-данных и распределенные Умные Агенты на фермах")
+
+System_Ext(payment_system, "Российская платежная система", "ЮKassa / Т-Бизнес / СБП (Эквайринг, биллинг)")
+System_Ext(client_hardware, "Оборудование ферм Клиентов", "IP-Камеры, IoT-датчики, исполнительные реле")
+System_Ext(client_erp, "Внешние ERP-системы Клиентов", "1С:Агро / Корпоративные ИС агрохолдингов")
+
+Rel(saas_client_admin, saas_platform, "Регистрация, онбординг, оплата тарифа", "HTTPS / Web")
+Rel(saas_platform, payment_system, "Проведение платежей, списание подписок", "REST API / Webhooks")
+Rel(saas_operator, saas_platform, "Мониторинг инцидентов и алерты", "Локальный Web UI / Cloud SMS")
+Rel(client_hardware, saas_platform, "Передача телеметрии и видео, прием команд", "RTSP / MQTT")
+Rel(saas_platform, client_erp, "Экспорт метрик эффективности по контракту", "SaaS REST API")
+
+@endum

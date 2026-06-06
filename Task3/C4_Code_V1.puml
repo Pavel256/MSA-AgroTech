@@ -1,0 +1,68 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Диаграмма кода (C4) — Структура классов Rules Evaluator Engine (Go / Heavy Edge)
+
+package "Domain (Доменный слой)" {
+    interface IRulesEvaluator {
+        + EvaluateAnomaly(event: AnomalyEvent, audioLevel: float) : BusinessAction
+    }
+    
+    class PigRulesEvaluator {
+        - minVizgFrequency: int
+        - maxAnxietyDuration: duration
+        + EvaluateAnomaly(event: AnomalyEvent, audioLevel: float) : BusinessAction
+    }
+    
+    class AnomalyEvent {
+        + Timestamp: time
+        + CameraID: string
+        + AnomalyType: string
+        + Confidence: float
+    }
+    
+    class BusinessAction {
+        + TargetDeviceID: string
+        + CommandType: string
+        + Priority: int
+    }
+}
+
+package "Infrastructure (Инфраструктурный слой)" {
+    class RabbitQueueListener {
+        - evaluator: IRulesEvaluator
+        - sender: ICommandSender
+        + OnMessageReceived(msg: []byte)
+    }
+    
+    interface ICommandSender {
+        + SendCommand(action: BusinessAction)
+    }
+    
+    class ModbusCommandSender {
+        - rabbitChannel: AMQPChannel
+        + SendCommand(action: BusinessAction)
+    }
+    
+    interface IDBRepository {
+        + SaveIncident(event: AnomalyEvent, action: BusinessAction) : error
+    }
+    
+    class TimescaleRepository {
+        - sqlClient: pgx.Conn
+        + SaveIncident(event: AnomalyEvent, action: BusinessAction) : error
+    }
+}
+
+' Реализация интерфейсов и связи зависимостей
+IRulesEvaluator <|.. PigRulesEvaluator
+ICommandSender <|.. ModbusCommandSender
+
+RabbitQueueListener --> IRulesEvaluator : "Использует для анализа"
+RabbitQueueListener --> ICommandSender : "Отправляет команды"
+RabbitQueueListener --> IDBRepository : "Логирует события"
+
+PigRulesEvaluator ..> AnomalyEvent : "Принимает"
+PigRulesEvaluator ..> BusinessAction : "Генерирует"
+@endum

@@ -1,0 +1,75 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Контекстно-контейнерная диаграмма. Вариант 2 — Thin Edge
+
+Person(director, "Директор хозяйства", "Управление через веб-портал")
+Person(analyst, "Аналитик", "Работа с BI-системой")
+Person(operator, "Оператор фермы", "Мониторинг через мобильное приложение (требует интернет)")
+
+System_Boundary(agroprom_platform, "АгроПром X — Цифровая платформа [system]") {
+
+    ' === СУЩЕСТВУЮЩИЕ ИСПОЛЬЗУЕМЫЕ СЕРВИСЫ ===
+    Container(central_kafka, "Брокер сообщений", "Apache Kafka", "Существующая шина данных холдинга")
+    Container(data_lake, "Data Lake", "MinIO", "Существующее хранилище сырых данных")
+    Container(data_warehouse, "Data Warehouse", "ClickHouse", "Существующее хранилище структурированных данных")
+    Container(analytics_module, "Аналитический модуль", "Python + Spark", "Существующий модуль анализа эффективности")
+    Container(web_portal, "Веб-портал", "React", "Существующий интерфейс управления")
+    Container(bi_system, "BI-системa", "Power BI", "Существующая визуализация")
+    Container(mobile_app, "Мобильное приложение", "Flutter", "Существующее приложение холдинга")
+
+    ' === НОВЫЕ ДОБАВЛЯЕМЫЕ БЛОКИ ЖИВОТНОВОДСТВА ===
+    Container_Boundary(farm_inputs, "Новый блок: Сбор данных свинокомплексов") {
+        Container(cameras, "IP-Камеры 2.8мм", "Hardware / RTSP", "Съемка загонов")
+        Container(audio, "Датчики звука", "Hardware", "Фиксация визга поросят")
+        Container(climate, "Датчики климата", "Hardware", "Метрики среды")
+        Container(feeders, "Умные кормушки и поилки", "Hardware", "Контроль раздачи")
+    }
+
+    Container_Boundary(thin_edge, "Новый блок: Проксирование на местах (Thin Edge)") {
+        Container(proxy, "Ретранслятор трафика (Proxy)", "Nginx / MediaMTX", "Проксирование потоков в VPN")
+    }
+
+    Container_Boundary(central_ai_cluster, "Новый блок: Центральный ИИ-Кластер (ЦОД)") {
+        Container(central_ai, "Центральный ИИ-Сервер", "Triton Server", "Удаленный инференс моделей со всех ферм в реальном времени")
+    }
+
+    Container_Boundary(execution_layer, "Новый блок: Исполнители") {
+        Container(actuators, "Исполнительные механизмы", "Реле / Контроллеры", "Вентиляция, клапаны корма")
+    }
+}
+
+System(erp_1c, "ERP-система 1С", "1С:Агро: Финансы, склад, кадры")
+
+' --- ПОТОКИ ДАННЫХ В THIN EDGE ---
+Rel(cameras, proxy, "Передача видеопотока", "RTSP")
+Rel(audio, proxy, "Передача аудиопотока", "RTSP/PCM")
+Rel(climate, proxy, "Передача метрик климата", "MQTT")
+Rel(feeders, proxy, "Передача расхода корма", "Modbus TCP")
+
+' Стриминг из шлюза фермы напрямую в корпоративную Kafka и ИИ-кластер в облаке
+Rel(proxy, central_ai, "Непрерывный стриминг видео и аудио через VPN", "VPN/TLS")
+Rel(proxy, central_kafka, "Трансляция числовой телеметрии датчиков напрямую", "Kafka Protocol / VPN")
+
+' Контур обработки ИИ в облаке и запись в существующую инфраструктуру
+Rel(central_ai, central_kafka, "Публикация алертов об инцидентах", "Kafka Protocol")
+Rel(central_kafka, data_lake, "Сохранение сырых данных", "Kafka Connect")
+Rel(central_kafka, data_warehouse, "Сохранение структурированных данных", "ETL")
+
+' Обратный контур команд из облака холдинга на оборудование фермы
+Rel(central_kafka, proxy, "Передача управляющих команд от движка правил", "HTTPS/VPN")
+Rel(proxy, actuators, "Выполнение команд на механизмах", "Modbus/Реле")
+
+' Взаимодействие пользователей холдинга (Оператор критически зависит от mobile_app + интернета)
+Rel(director, web_portal, "Использует", "HTTPS")
+Rel(director, mobile_app, "Использует оперативно", "смартфон")
+Rel(operator, mobile_app, "Получение Push-алертов (Критически зависит от интернета)", "смартфон")
+Rel(analyst, bi_system, "Анализирует", "HTTPS")
+
+Rel(data_lake, analytics_module, "Вход", "Spark")
+Rel(data_warehouse, analytics_module, "Вход", "SQL")
+Rel(analytics_module, web_portal, "Рекомендации", "WebSocket")
+Rel(analytics_module, bi_system, "Бизнес-данные", "ETL")
+Rel(web_portal, erp_1c, "Синхронизация данных", "REST API")
+@endum

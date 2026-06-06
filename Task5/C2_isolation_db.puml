@@ -1,0 +1,18 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title SaaS Изоляция данных — Вариант A: Выделенные БД (Database-per-Tenant)
+
+System_Boundary(central_office, "Центральный офис SaaS") {
+    Container(central_api, "API Gateway / Backend", "Go", "Проверяет tenant_id в JWT и маршрутизирует запросы")
+    
+    Boundary(isolated_data, "Изолированные базы данных клиентов") {
+        ContainerDb(db_tenant_1, "ClickHouse (Tenant 1)", "ClickHouse", "Данные Агрохолдинга А")
+        ContainerDb(db_tenant_2, "ClickHouse (Tenant 2)", "ClickHouse", "Данные Агрохолдинга Б")
+    }
+}
+
+Rel(central_api, db_tenant_1, "Запросы с tenant_id = 1", "SQL / Выделенный порт")
+Rel(central_api, db_tenant_2, "Запросы с tenant_id = 2", "SQL / Выделенный порт")
+@endum

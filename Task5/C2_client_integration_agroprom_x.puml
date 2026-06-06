@@ -1,0 +1,35 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Контейнерная диаграмма (C2) — Пример интеграции холдинга АгроПром X как клиента SaaS
+
+System_Boundary(saas_cloud, "Центральный ЦОД SaaS-Платформы Животноводство X") {
+    Container(saas_gateway, "SaaS API Gateway", "Go", "Принимает запросы от АгроПром X с заголовком X-Tenant-ID: agroprom_x")
+    ContainerDb(saas_dwh, "ClickHouse Warehouse", "ClickHouse Cluster", "Хранит данные всех клиентов. Строки АгроПром X защищены через Row-Level Security (RLS)")
+}
+
+' Исторический контур текущей компании, которая теперь стала клиентом SaaS платформы
+System_Boundary(agroprom_x_client, "Инфраструктура холдинга АгроПром X (Клиент SaaS)") {
+    Container(corporate_portal, "Корпоративный Веб-портал", "React", "Отображает дашборды животноводства, запрашивая данные из SaaS")
+    Container(corporate_bi, "BI-система холдинга", "Power BI", "Строит отчеты на основе данных, забираемых по API из SaaS")
+    Container(corporate_spark, "Аналитический модуль", "Python + Spark", "Выгружает историческую телеметрию для прогнозирования кормов")
+    System(erp_1c, "ERP-система 1С", "1С:Агро: Бухгалтерский учет поголовья")
+}
+
+System_Boundary(agroprom_farm, "Свинокомплекс №1 холдинга АгроПром X") {
+    Container(local_agent, "Умный Агент (Heavy Edge)", "K3s Кластер", "Крутит ИИ-модели на ферме, асинхронно шлет батчи с tenant_id='agroprom_x'")
+}
+
+' Потоки интеграции
+Rel(local_agent, saas_gateway, "Асинхронный батчинг метрик раз в 10 минут", "HTTPS / Kafka Protocol")
+Rel(saas_gateway, saas_dwh, "Запись данных в общую таблицу", "SQL")
+
+' Интеграция корпоративного уровня АгроПром X через SaaS API
+Rel(corporate_portal, saas_gateway, "Запрос оперативных алертов и статусов кормушек", "REST API (Bearer Token)")
+Rel(corporate_bi, saas_gateway, "Выгрузка агрегированных метрик для Power BI", "REST API / OData")
+Rel(corporate_spark, saas_gateway, "Пакетная выгрузка истории климата и веса", "REST API / Bulk Export")
+
+' Внутренние связи АгроПром X
+Rel(corporate_portal, erp_1c, "Передача данных учета", "REST API")
+@endum

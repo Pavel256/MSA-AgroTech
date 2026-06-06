@@ -1,0 +1,68 @@
+name: PlantUML Diagrams
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+
+jobs:
+  generate-diagrams:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Исправлено: Явный поиск каждого файла и запуск Docker с доступом в интернет
+      - name: Generate Diagrams
+        run: |
+          echo "Ищем все файлы .puml во всех директориях..."
+          
+          # Находим абсолютно все файлы .puml в проекте
+          PUML_FILES=$(find . -name "*.puml")
+          
+          if [ -n "$PUML_FILES" ]; then
+            echo "Файлы найдены. Запуск рендеринга через Docker..."
+            
+            # Цикл по каждому найденному файлу
+            echo "$PUML_FILES" | while read -r file; do
+              echo "Рендерим: $file"
+              # --network=host дает доступ в интернет для скачивания !include библиотек C4
+              # -v $(pwd):/data монтирует корень проекта, чтобы пути к файлам внутри контейнера совпадали
+              docker run --rm --network=host -v $(pwd):/data plantuml/plantuml -tpng "/data/${file#./}"
+            done
+            
+            echo "Рендеринг успешно завершен."
+          else
+            echo "Файлы .puml не найдены в репозитории."
+          fi
+
+      - name: Commit Diagrams
+        run: |
+          git config --local user.email "github-actions[bot]@://github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Находим все сгенерированные файлы png
+          PNG_FILES=$(find . -name "*.png" -o -name "*.PNG")
+          
+          if [ -n "$PNG_FILES" ]; then
+            echo "Найдены картинки .png. Добавляем в Git..."
+            echo "$PNG_FILES" | xargs git add
+            
+            if git diff --staged --quiet; then
+              echo "Нет новых изменений в диаграммах для коммита."
+            else
+              git commit -m "Automated diagram generation [skip ci]"
+              git push origin main
+            fi
+          else
+            echo "Новые картинки не были сгенерированы."
+          fi
