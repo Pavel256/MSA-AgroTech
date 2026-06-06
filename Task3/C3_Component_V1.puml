@@ -1,0 +1,53 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Компонентная диаграмма (C3) — Локальные Сервисы Фермы (Heavy Edge)
+
+Container(cameras, "IP-Камеры 2.8мм", "Hardware / RTSP")
+Container(audio, "Датчики звука", "Hardware")
+Container(local_queue, "Локальная очередь сообщений", "RabbitMQ")
+ContainerDb(local_db, "Локальная БД", "PostgreSQL / TimescaleDB")
+Container(actuators, "Исполнительные механизмы", "Реле / Контроллеры")
+
+Container_Boundary(heavy_edge_components, "ЛОКАЛЬНЫЙ СЕРВЕР ФЕРМЫ (HEAVY EDGE)") {
+
+    Boundary(cv_service_boundary, "Сервис видеоаналитики (cv_service) [Python]") {
+        Container(rtsp_client, "RTSP Stream Receiver", "OpenCV / FFmpeg", "Захватывает и декодирует кадры видеопотока")
+        Container(inference_client, "Inference Client", "Triton Client", "Передает кадры в общую память Triton Server и запускает модель")
+        Container(triton_model, "YOLO Core Model", "Triton Server Runtime", "Исполняет партнерскую ИИ-модель (детекция драк, задавливаний)")
+        Container(event_extractor, "Event Extractor", "Python Code", "Формирует структурированное JSON-событие при изменении состояния в кадре")
+    }
+
+    Boundary(local_engine_boundary, "Локальный движок правил (local_engine) [Go]") {
+        Container(api_gateway_local, "Local Web Server & API", "Go Fiber", "Служит эндпоинтом для локального Web UI оператора")
+        Container(queue_listener, "Queue Listener", "FastStream", "Асинхронно вычитывает события аномалий из RabbitMQ")
+        Container(audio_receiver, "Audio Stream Analyzer", "Go PCM Client", "Принимает аудиопоток с микрофонов свинокомплекса")
+        Container(rules_evaluator, "Rules Evaluator Engine", "Go Code", "Ядро бизнес-логики: сопоставляет ИИ-события с аудио-шумом, проверяет лимиты климата")
+        Container(modbus_client, "Modbus/MQTT Client", "Go Net", "Формирует промышленные команды для кормушек и вентиляции")
+        Container(db_repository, "Database Repository", "Go pgx", "Осуществляет запись инцидентов и чтение настроек из TimescaleDB")
+    }
+}
+
+' Потоки данных ИИ-сервиса
+Rel(cameras, rtsp_client, "Захват потока", "RTSP")
+Rel(rtsp_client, inference_client, "Кадры в памяти", "Shared Memory")
+Rel(inference_client, triton_model, "Инференс модели", "gRPC")
+Rel(triton_model, event_extractor, "Координаты / Классы", "Тензоры")
+Rel(event_extractor, local_queue, "Публикация аномалии (ALERT_FIGHT / CRUSHING)", "AMQP / JSON")
+
+' Потоки данных Движка правил
+Rel(local_queue, queue_listener, "Доставка алертов", "AMQP")
+Rel(audio, audio_receiver, "Стриминг звука (визг поросят)", "PCM")
+
+Rel(queue_listener, rules_evaluator, "Передача события")
+Rel(audio_receiver, rules_evaluator, "Уровень шума / Частота визга")
+
+Rel(rules_evaluator, db_repository, "Запрос порогов / Логирование инцидента")
+Rel(db_repository, local_db, "Запись / Чтение логов и настроек", "SQL")
+
+Rel(rules_evaluator, modbus_client, "Триггер автоматического действия")
+Rel(modbus_client, local_queue, "Публикация команд управления на реле", "AMQP")
+Rel(local_queue, actuators, "Выполнение физической команды", "Modbus TCP")
+
+@endum

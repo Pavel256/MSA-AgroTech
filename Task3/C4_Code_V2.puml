@@ -1,0 +1,53 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Диаграмма кода (C4) — Стратегия Изоляции Клиентов (SaaS Multi-Tenancy / Thin Edge)
+
+package "Cloud Core Engine" {
+    interface ITenantRuleStrategy {
+        + ProcessTenantData(data: AnomalyData) : CloudAction
+    }
+    
+    class PigFarmStrategy {
+        + ProcessTenantData(data: AnomalyData) : CloudAction
+    }
+    
+    class CowFarmStrategy {
+        + ProcessTenantData(data: AnomalyData) : CloudAction
+    }
+    
+    class TenantRouter {
+        - strategies: Map<TenantID, ITenantRuleStrategy>
+        + RouteToStrategy(tenantID: string, data: AnomalyData) : CloudAction
+    }
+    
+    class AnomalyData {
+        + TenantID: string
+        + FarmID: string
+        + Payload: JSONBytes
+    }
+    
+    class CloudAction {
+        + TenantID: string
+        + Command: string
+    }
+}
+
+package "Cloud Infrastructure" {
+    class CloudKafkaListener {
+        - router: TenantRouter
+        + OnKafkaMessage(msg: KafkaMessage)
+    }
+}
+
+' Связи классов
+ITenantRuleStrategy <|.. PigFarmStrategy
+ITenantRuleStrategy <|.. CowFarmStrategy
+
+TenantRouter --> ITenantRuleStrategy : "Делегирует обработку согласно TenantID"
+CloudKafkaListener --> TenantRouter : "Передает распарсенные сообщения"
+
+TenantRouter ..> AnomalyData : "Анализирует"
+TenantRouter ..> CloudAction : "Возвращает результат"
+@endum

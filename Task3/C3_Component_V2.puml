@@ -1,0 +1,46 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Компонентная диаграмма (C3) — Облачные Вычисления ЦОД (Thin Edge)
+
+Container(proxy_farm, "Ретранслятор фермы (Proxy)", "Nginx / MediaMTX", "Передает видео и IoT через VPN")
+Container(central_kafka, "Центральный Брокер", "Apache Kafka")
+ContainerDb(data_warehouse, "Data Warehouse", "ClickHouse")
+
+System_Boundary(central_cloud_components, "ЦЕНТРАЛЬНЫЙ ЦОД ХОЛДИНГА") {
+
+    ' Компоненты Облачной Видеоаналитики
+    Boundary(central_cv_boundary, "Облачный сервис видеоаналитики [Python Cluster]") {
+        Container(cloud_stream_pool, "Stream Pool Manager", "FFmpeg Cluster", "Поддерживает одновременный прием сотен RTSP-потоков со всех ферм")
+        Container(gpu_batcher, "Dynamic GPU Batcher", "Triton Server", "Формирует динамические батчи кадров для эффективной загрузки карт Nvidia H100")
+        Container(cloud_ai_model, "YOLO Cloud Model", "TensorRT Engine", "Централизованно выполняет инференс моделей распознавания")
+    }
+
+    ' Компоненты Облачного Движка Правил
+    Boundary(central_rules_boundary, "Облачный движок правил (central_rules_engine) [Go]") {
+        Container(kafka_consumer, "Kafka Consumer Group", "Go Kafka", "Параллельно вычитывает терабайты ИИ-событий из Кафки")
+        Container(tenant_router, "Multi-Tenant Router", "Go Code", "Разделяет логику обработки и правила по идентификаторам конкретных ферм/клиентов")
+        Container(global_rules_evaluator, "Global Rules Evaluator", "Go Code", "Ядро бизнес-логики: рассчитывает триггеры аномалий и конверсию корма")
+        Container(cloud_db_client, "DWH Client", "Go ClickHouse Driver", "Записывает агрегированную историю в ClickHouse")
+        Container(cloud_command_dispatcher, "Cloud Command Dispatcher", "Go Net", "Публикует команды обратного контура управления в RabbitMQ")
+    }
+}
+
+' Потоки данных в облаке
+Rel(proxy_farm, cloud_stream_pool, "Стриминг видео всех ферм", "RTSP / VPN")
+Rel(cloud_stream_pool, gpu_batcher, "Очередь кадров")
+Rel(gpu_batcher, cloud_ai_model, "Параллельный инференс на GPU", "TensorRT")
+Rel(cloud_ai_model, central_kafka, "Публикация алертов холдинга", "Kafka Protocol")
+
+Rel(central_kafka, kafka_consumer, "Вычитка ИИ-событий", "Kafka Protocol")
+Rel(kafka_consumer, tenant_router, "Сырые события")
+Rel(tenant_router, global_rules_evaluator, "Маршрутизированный поток данных конкретной фермы")
+
+Rel(global_rules_evaluator, cloud_db_client, "Отправка истории")
+Rel(cloud_db_client, data_warehouse, "Запись исторических логов", "TCP / ClickHouse")
+
+Rel(global_rules_evaluator, cloud_command_dispatcher, "Генерация команды управления")
+Rel(cloud_command_dispatcher, central_kafka, "Отправка команды в обратный контур на ферму", "Kafka Protocol")
+Rel(central_kafka, proxy_farm, "Доставка команды на железный уровень", "VPN")
+@endum

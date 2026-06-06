@@ -1,0 +1,22 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title SaaS Изоляция данных — Вариант Б: Выделенные схемы (Schema-per-Tenant)
+
+System_Boundary(central_office, "Центральный офис SaaS") {
+    Container(central_api, "API Gateway / Backend", "Go", "Динамически подставляет имя схемы в SQL-запрос")
+    
+    ContainerDb(shared_clickhouse, "Общий ClickHouse", "ClickHouse Cluster") {
+        Boundary(schema_1, "Схема: tenant_1") {
+            Container(tables_t1, "Таблицы телеметрии T1", "ClickHouse Tables")
+        }
+        Boundary(schema_2, "Схема: tenant_2") {
+            Container(tables_t2, "Таблицы телеметрии T2", "ClickHouse Tables")
+        }
+    }
+}
+
+Rel(central_api, tables_t1, "Запросы к tenant_1.telemetry", "SQL")
+Rel(central_api, tables_t2, "Запросы к tenant_2.telemetry", "SQL")
+@endum

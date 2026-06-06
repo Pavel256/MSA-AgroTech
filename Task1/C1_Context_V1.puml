@@ -1,0 +1,79 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Контекстно-контейнерная диаграмма. Вариант 1 — Heavy Edge
+
+' Внешние пользователи (интегрируются в существующие роли)
+Person(director, "Директор хозяйства", "Управление через веб-портал")
+Person(analyst, "Аналитик", "Работа с BI-системой")
+Person(operator, "Оператор фермы", "Мониторинг свинокомплекса на месте")
+
+' Единый контур существующей платформы компании
+System_Boundary(agroprom_platform, "АгроПром X — Цифровая платформа") {
+
+    ' === СУЩЕСТВУЮЩИЕ ИСПОЛЬЗУЕМЫЕ СЕРВИСЫ (Переиспользуем из примера) ===
+    Container(central_kafka, "Брокер сообщений", "Apache Kafka", "Существующая шина данных холдинга")
+    Container(data_lake, "Data Lake", "MinIO", "Существующее хранилище сырых данных (S3-совместимое)")
+    Container(data_warehouse, "Data Warehouse", "ClickHouse", "Существующее хранилище структурированных данных")
+    Container(analytics_module, "Аналитический модуль", "Python + Spark", "Существующий модуль анализа эффективности")
+    Container(web_portal, "Веб-портал", "React", "Существующий интерфейс управления хозяйством")
+    Container(bi_system, "BI-система", "Power BI", "Существующая система отчетов и визуализации")
+    Container(mobile_app, "Мобильное приложение", "Flutter", "Существующее приложение для полевых отчетов")
+
+    ' === НОВЫЕ ДОБАВЛЯЕМЫЕ БЛОКИ (Животноводство) ===
+    Container_Boundary(farm_inputs, "Новый блок: Сбор данных свинокомплексов") {
+        Container(cameras, "IP-Камеры 2.8мм", "Hardware / RTSP", "Съемка загонов")
+        Container(audio, "Датчики звука", "Hardware", "Фиксация визга поросят")
+        Container(climate, "Датчики климата", "Hardware", "Метрики среды (CO2, температура)")
+        Container(feeders, "Умные кормушки и поилки", "Hardware", "Контроль раздачи корма")
+    }
+
+    Container_Boundary(heavy_edge, "Новый блок: Локальная обработка (Heavy Edge)") {
+        Container(local_logic, "Движок правил и ИИ-модуль", "Python / Triton Server", "Локальный инференс партнерской модели, детекция драк/задавливаний")
+        Container(local_queue, "Локальная очередь", "RabbitMQ", "Мгновенный буфер для критических алертов")
+        Container(local_db, "Локальная БД", "PostgreSQL / TimescaleDB", "Накопление локальной истории телеметрии")
+    }
+
+    Container_Boundary(execution_layer, "Новый блок: Локальное управление") {
+        Container(actuators, "Исполнительные механизмы", "Реле / Контроллеры", "Автоматическая вентиляция и клапаны корма")
+        Container(gsm_gateway, "Локальный GSM шлюз", "Hardware", "Модуль отправки SMS операторам без интернета")
+    }
+}
+
+' Существующая внешняя учетная система холдинга
+System(erp_1c, "ERP-система 1С", "1С:Агро: Финансы, склад, кадры")
+
+' --- СВЯЗИ НОВОЙ СИСТЕМЫ НА МЕСТАХ (Автономный контур фермы) ---
+Rel(cameras, local_logic, "Передача видеопотока", "RTSP")
+Rel(audio, local_logic, "Передача аудиопотока", "RTSP/PCM")
+Rel(climate, local_db, "Запись телеметрии климата", "MQTT")
+Rel(feeders, local_db, "Запись веса корма", "Modbus TCP")
+
+Rel(local_logic, local_queue, "Публикация алерта при аномалии", "AMQP")
+Rel(local_queue, actuators, "Команда на автоматическое действие", "Modbus")
+Rel(local_queue, gsm_gateway, "Отправка экстренного уведомления", "AT-команды")
+Rel(gsm_gateway, operator, "Мгновенное SMS без интернета (<2 сек)", "GSM")
+Rel(operator, local_logic, "Локальное управление при аварии", "Локальный HTTP")
+Rel(local_logic, local_db, "Логирование инцидента в историю", "SQL")
+
+' --- ИНТЕГРАЦИЯ С ТЕКУЩЕЙ ИНФРАСТРУКТУРОЙ ХОЛДИНГА (Утилизация сервисов) ---
+' 1. Локальная БД пачками скидывает данные в существующую Kafka раз в 10 минут
+Rel(local_db, central_kafka, "Асинхронный батчинг метрик (раз в 10 мин)", "Kafka Protocol / TLS")
+
+' 2. Из Kafka данные уходят в существующие корпоративные хранилища данных
+Rel(central_kafka, data_lake, "Выгрузка сырых логов", "Kafka Connect")
+Rel(central_kafka, data_warehouse, "Выгрузка структурированных метрик", "ETL / Airflow")
+
+' 3. Существующий Аналитический модуль обрабатывает данные и обогащает UI
+Rel(data_lake, analytics_module, "Доступ к сырым данным", "Spark")
+Rel(data_warehouse, analytics_module, "Доступ к метрикам", "SQL")
+Rel(analytics_module, web_portal, "Формирование рекомендаций животноводства", "WebSocket")
+Rel(analytics_module, bi_system, "Передача агрегированных бизнес-данных", "ETL")
+
+' 4. Существующие UI-приложения переиспользуются для новых ролей
+Rel(director, web_portal, "Использует", "HTTPS")
+Rel(director, mobile_app, "Использует", "смартфон")
+Rel(analyst, bi_system, "Анализирует", "HTTPS")
+Rel(web_portal, erp_1c, "Синхронизация данных", "REST API")
+@endum

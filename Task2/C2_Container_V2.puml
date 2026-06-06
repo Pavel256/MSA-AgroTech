@@ -1,0 +1,67 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Контейнерная диаграмма (C2) — Вариант 2: Thin Edge (Альтернативное решение)
+
+Person(director, "Директор хозяйства", "Верхнеуровневый контроль KPI")
+Person(analyst, "Аналитик", "Работа с BI-системой")
+Person(operator, "Оператор фермы", "Мониторинг инцидентов через приложение")
+
+System_Boundary(agroprom_platform, "АгроПром X — Цифровая платформа") {
+
+    Container_Boundary(central_office, "Центральный ЦОД холдинга") {
+        Container(central_ai, "Центральный ИИ-Кластер", "Triton Server", "Удаленный инференс моделей со всех ферм")
+        Container(central_api, "Центральный API Gateway (Бэкенд)", "Go / Python", "Бизнес-правила, обработка аномалий, API для приложений")
+        Container(web_app, "Веб-портал", "React", "Существующий общий интерфейс управления")
+        Container(bi_system, "BI-платформа аналитики", "Power BI", "Визуализация трендов")
+        Container(mobile_app, "Мобильное приложение", "Flutter", "Существующее приложение холдинга")
+        Container(central_queue, "Центральная queue сообщений", "RabbitMQ / Kafka", "Шина для распределения алертов")
+        ContainerDb(data_warehouse, "Data Warehouse", "ClickHouse", "Существующее хранилище")
+        Container(central_rules_engine, "Облачный движок локальных правил", "Go / FastStream", "Обработка аномалий и генерация команд")
+    }
+
+    Container_Boundary(farm_inputs, "Сбор данных свинокомплексов") {
+        Container(cameras, "IP-Камеры 2.8мм", "Hardware / RTSP", "Съемка загонов")
+        Container(audio, "Датчики звука", "Hardware", "Фиксация визга поросят")
+        Container(climate, "Датчики климата", "Hardware", "Телеметрия среды")
+        Container(feeders, "Умные кормушки", "Hardware", "Контроль раздачи")
+    }
+
+    Container_Boundary(thin_edge_шлюз, "Проксирование на местах (Thin Edge)") {
+        Container(proxy, "Ретранслятор трафика (Proxy)", "Nginx + MediaMTX", "Проксирование потоков в VPN")
+    }
+
+    Container_Boundary(execution_layer, "Локальные исполнители") {
+        Container(actuators, "Исполнительные механизмы", "Реле / Контроллеры", "Вентиляция, клапаны корма")
+    }
+}
+
+System(erp_1c, "ERP-система 1С", "1С:Агро")
+
+Rel(cameras, proxy, "Передача видеопотока", "RTSP")
+Rel(audio, proxy, "Передача аудиопотока", "RTSP/PCM")
+Rel(climate, proxy, "Передача метрик климата", "MQTT")
+Rel(feeders, proxy, "Передача расхода корма", "Modbus TCP")
+
+Rel(proxy, central_ai, "Непрерывный стриминг сырого видео через VPN", "VPN/TLS")
+Rel(proxy, central_kafka, "Трансляция телеметрии датчиков напрямую в шину", "Kafka Protocol / VPN")
+
+Rel(central_ai, central_kafka, "Публикация алертов при аномалии", "Kafka Protocol")
+Rel(central_kafka, central_rules_engine, "Вычитка событий аномалий", "Kafka Protocol")
+Rel(central_rules_engine, data_warehouse, "Запись логов инцидентов", "SQL")
+Rel(central_rules_engine, central_api, "Оповещение бэкенда", "gRPC")
+
+Rel(central_rules_engine, proxy, "Передача команд для оборудования", "HTTPS/VPN")
+Rel(proxy, actuators, "Выполнение команд на механизмах", "Modbus/Реле")
+
+Rel(director, web_app, "Просмотр глубокой аналитики холдинга", "HTTPS")
+Rel(director, mobile_app, "Использует оперативно показатели скота в пути", "смартфон")
+Rel(operator, mobile_app, "Получение Push-алертов об инцидентах на ферме (требует интернет)", "смартфон")
+Rel(analyst, bi_system, "Анализирует тренды", "HTTPS")
+
+Rel(mobile_app, central_api, "Запросы к бэкенду и получение Push-уведомлений", "REST API / APNS / FCM")
+Rel(web_app, central_api, "Запросы данных", "REST API")
+Rel(bi_system, central_api, "Выборка данных", "SQL / REST API")
+Rel(central_api, erp_1c, "Синхронизация данных", "REST API")
+@endum

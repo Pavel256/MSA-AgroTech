@@ -1,0 +1,77 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Контейнерная диаграмма (C2) — Вариант 1: Heavy Edge (Основное решение)
+
+Person(director, "Директор хозяйства", "Управление через веб-портал")
+Person(analyst, "Аналитик", "Работа с BI-системой")
+Person(operator, "Оператор фермы", "Контроль процессов на месте")
+
+System_Boundary(agroprom_platform, "АгроПром X — Цифровая платформа") {
+
+    Container_Boundary(central_office, "Центральный офис (Облако SaaS)") {
+        Container(central_api, "Центральный API Gateway (Бэкенд)", "Go / Python", "Бизнес-логика SaaS, роли, API для приложений")
+        Container(web_app, "Веб-портал", "React", "Существующая общая панель управления холдингом")
+        Container(bi_system, "BI-платформа аналитики", "Power BI", "Существующий конструктор отчетов")
+        Container(mobile_app, "Мобильное приложение", "Flutter", "Существующее приложение холдинга")
+        Container(central_kafka, "Брокер сообщений", "Apache Kafka", "Шина данных холдинга")
+        ContainerDb(data_warehouse, "Data Warehouse", "ClickHouse", "Существующее хранилище")
+    }
+
+    Container_Boundary(farm_inputs, "Сбор данных свинокомплексов") {
+        Container(cameras, "IP-Камеры 2.8мм", "Hardware / RTSP", "Съемка загонов")
+        Container(audio, "Датчики звука", "Hardware", "Фиксация визга поросят")
+        Container(climate, "Датчики климата", "Hardware", "Метрики среды")
+        Container(feeders, "Умные кормушки и поилки", "Hardware", "Контроль раздачи корма")
+    }
+
+    Container_Boundary(heavy_edge_server, "ЛОКАЛЬНЫЙ СЕРВЕР ФЕРМЫ (HEAVY EDGE)") {
+        Container(cv_service, "Сервис видеоаналитики (ИИ)", "Python / Triton Server", "Инференс партнерской модели")
+        Container(iot_gateway, "IoT-Шлюз автоматизации", "Go / Node-RED", "Сбор телеметрии, опрос Modbus")
+        Container(local_engine, "Локальный движок правил", "Go / FastStream", "Локальная бизнес-логика и обработка аномалий")
+        Container(local_queue, "Локальная очередь сообщений", "RabbitMQ", "Шина для мгновенной доставки алертов")
+        ContainerDb(local_db, "Локальная БД временных рядов", "PostgreSQL / TimescaleDB", "Хранение истории телеметрии и логов")
+        Container(sync_service, "Сервис синхронизации данных", "Go", "Асинхронная отправка батчей метрик в центральную Kafka")
+    }
+
+    Container_Boundary(execution_layer, "Локальное управление и оповещение") {
+        Container(actuators, "Исполнительные механизмы", "Реле / Контроллеры", "Вентиляция и клапаны корма")
+        Container(gsm_gateway, "Локальный GSM шлюз", "Hardware", "Аппаратный модуль отправки SMS")
+    }
+}
+
+System(erp_1c, "ERP-система 1С", "1С:Агро")
+
+Rel(cameras, cv_service, "Передача видеопотока", "RTSP")
+Rel(audio, local_engine, "Передача аудиопотока", "RTSP/PCM")
+Rel_D(climate, iot_gateway, "Передача метрик", "MQTT")
+Rel_D(feeders, iot_gateway, "Передача веса корма", "Modbus TCP")
+
+Rel(cv_service, local_queue, "Публикация алерта", "AMQP")
+Rel(iot_gateway, local_queue, "Публикация телеметрии", "AMQP")
+Rel(local_queue, local_engine, "Вычитка событий", "AMQP")
+Rel(local_engine, local_queue, "Команды для исполнителей", "AMQP")
+
+Rel(local_queue, actuators, "Команда на действие", "Modbus")
+Rel(local_queue, gsm_gateway, "Отправка уведомления", "AT-команды")
+Rel(gsm_gateway, operator, "SMS без интернета (<2 сек)", "GSM")
+Rel(operator, local_engine, "Локальный Web UI на ПК диспетчера", "Локальный HTTP")
+
+Rel(iot_gateway, local_db, "Запись телеметрии", "SQL")
+Rel(local_engine, local_db, "Запись логов", "SQL")
+
+Rel(local_db, sync_service, "Чтение данных", "SQL")
+Rel_R(sync_service, central_kafka, "Батчинг метрик (раз в 10 мин)", "Kafka Protocol")
+Rel(central_kafka, central_api, "Потоковая передача", "Kafka Protocol")
+Rel(central_api, data_warehouse, "Запись в DWH", "SQL")
+
+Rel(director, web_app, "Использует", "HTTPS")
+Rel(director, mobile_app, "Использует оперативно", "смартфон")
+Rel(analyst, bi_system, "Анализирует тренды холдинга", "HTTPS")
+
+Rel(web_app, central_api, "Запросы данных", "REST API")
+Rel(mobile_app, central_api, "Получение алертов и метрик", "REST API")
+Rel(bi_system, central_api, "Выборка исторических данных", "SQL / REST API")
+Rel(central_api, erp_1c, "Выгрузка данных для учета", "REST API")
+@endum
